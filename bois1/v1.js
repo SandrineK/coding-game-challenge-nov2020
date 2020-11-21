@@ -3,15 +3,17 @@
  * the standard input according to the problem statement.
  **/
 const isDebug = true;
-const isLocal = true;
-const fichier = require('fs').readFileSync('resources/bois1--1851969838489761790').toString().split('\n');
+const isPerf = false;
+if(isPerf) console.error('date;label 1;etat;label 2;label3');
+let fichier;
+fichier = require('fs').readFileSync('resources/bois1-281968165392211392').toString().split('\n');
 const readLine = () => {
-    const line = isLocal ? fichier.shift() : readline();
-    if(!isDebug) console.error(line);
+    const line = fichier ? fichier.shift() : readline();
+    if (!isDebug) console.error(line);
     return line;
 };
-const debug = stringArray => {
-    if(isDebug) console.error(stringArray);
+const debug = (message, objet) => {
+    if (isDebug) console.error(message, objet);
 };
 //const h = [0.5, 1.5, 2.5, 3.5];
 const monHeuristique = (depart, arrivee, h = [0.5, 1.5, 2.5, 3.5]) =>
@@ -22,14 +24,17 @@ const reconstruitChemin = noeud => {
     let courant = noeud;
     while (courant.precedent) {
         recette.push(courant);
+        courant.precedent.suivant = courant;
         courant = courant.precedent;
     }
-    return recette.reverse();
+    return courant.suivant;
 };
 const calculeNoeudVoisin = (noeud, sort, inventaireMinArrivee, heuristique) => {
+    const inventaire = sort.delta ? noeud.inventaire.map((c, i) => c + sort.delta[i]) : [...noeud.inventaire];
+    if(!estRealisable(inventaire)) return null;
     const voisin = {};
-    voisin.inventaire = sort.delta ? noeud.inventaire.map((c, i) => c + sort.delta[i]) : [...noeud.inventaire];
-    voisin.f = heuristique(voisin.inventaire, inventaireMinArrivee);
+    voisin.inventaire = inventaire;
+    //voisin.f = heuristique(voisin.inventaire, inventaireMinArrivee);
     voisin.sorts = JSON.parse(JSON.stringify(noeud.sorts));
     if (sort.type === 'REST') {
         voisin.sorts.forEach(s => s.invoquable = true);
@@ -43,7 +48,7 @@ const calculeNoeudVoisin = (noeud, sort, inventaireMinArrivee, heuristique) => {
     voisin.key = calculeCle(voisin);
     return voisin;
 };
-const estRealisable = noeud => noeud.inventaire.every(c => c >= 0);
+const estRealisable = inventaire => inventaire.every(c => c >= 0);
 const calculeCle = noeud => `${noeud.inventaire.reduce((p, c) => p + (c).toString(16), '')}-${noeud.sort ? noeud.sort.type : ''}`;
 
 const aEtoile = (inventaireDepart, potion, sorts, heuristique) => {
@@ -55,21 +60,27 @@ const aEtoile = (inventaireDepart, potion, sorts, heuristique) => {
         sorts: [...sorts, {type: 'REST', invoquable: !sorts.every(c => c.invoquable), id: ''}],
         recette: []
     };
-    depart.f = heuristique(depart.inventaire, inventaireMinArrivee);
+    depart.h = heuristique(depart.inventaire, inventaireMinArrivee);
+    depart.f = depart.g + depart.h;
     depart.key = calculeCle(depart);
     const arrives = {
         inventaire: [...inventaireMinArrivee]
     };
     let listeOuverte = [depart];
     const listeFermee = [];
-    while(listeOuverte.length > 0){
-
+    let i = 0;
+    while (listeOuverte.length > 0) {
+        i++;
         // cherche le f le plus bas pour aller à la suite
         let courant = listeOuverte.reduce((p, c) => p.f <= c.f ? p : c);
         // si on est arrivé, c'est fini
         if (courant.inventaire.every((a, i) => a >= arrives.inventaire[i])) {
-            courant.suivant = {sort: potion};
-            return reconstruitChemin(courant);
+            courant.suivant = {sort: potion, cout: courant.g+1};
+            let suite = reconstruitChemin(courant);
+            return {
+                suite: suite,
+                cout: courant.g+1
+            };
         }
 
         // sinon, on cherche parmis les plus proches
@@ -77,18 +88,17 @@ const aEtoile = (inventaireDepart, potion, sorts, heuristique) => {
         listeFermee.push(courant);
         for (let sort of courant.sorts.filter(c => c.invoquable)) {
             const voisin = calculeNoeudVoisin(courant, sort, inventaireMinArrivee, heuristique);
-
-            if (estRealisable(voisin)) {
+            if (voisin) {
                 if (listeFermee.find(c => c.key === voisin.key)) continue;
 
-                const tentativeScoreG = courant.g + heuristique(courant.inventaire, voisin.inventaire);
+                voisin.g = courant.g + 1;
+                voisin.h = heuristique(voisin.inventaire, inventaireMinArrivee);
+                voisin.f = voisin.g + voisin.h;
 
-                const existantListeFermee = listeOuverte.find(c => c.key === voisin.key);
-                if (!existantListeFermee || tentativeScoreG < existantListeFermee.g) {
+                const existant = listeOuverte.find(c => c.key === voisin.key);
+                if (!existant || voisin.f < existant.h) {
                     listeOuverte.push(voisin);
                     voisin.precedent = courant;
-                    voisin.g = tentativeScoreG;
-                    voisin.f = voisin.g + heuristique(voisin.inventaire, inventaireMinArrivee);
                 }
             }
         }
@@ -97,9 +107,10 @@ const aEtoile = (inventaireDepart, potion, sorts, heuristique) => {
     throw 'Erreur A star';
 
 };
-
+if(isPerf) console.error(`${new Date().getTime()};global;debut;;`);
 // game loop
 while (true) {
+    if(isPerf) console.error(`${new Date().getTime()};parsing;debut;;`);
     const actionCount = parseInt(readLine()); // the number of spells and recipes in play
     const actionArray = [];
     for (let i = 0; i < actionCount; i++) {
@@ -138,7 +149,7 @@ while (true) {
         };
         inventoryArray.push(inventory);
     }
-
+    if(isPerf) console.error(`${new Date().getTime()};parsing;fin;;`);
     // si l'objectif n'existe plus ou n'existe pas, on cherche quoi faire
     const monInventaire = inventoryArray[0];
 
@@ -146,18 +157,17 @@ while (true) {
     const potions = actionArray.filter(c => c.type === 'BREW');
     const recettes = [];
     for (let potion of potions) {
-        const recette = aEtoile(monInventaire.inv, potion, sorts, monHeuristique);
-        recettes.push({
-            chemin: recette,
-            cout: recette.length,
-            gain: potion.prix,
-            rentabilite: potion.prix / recette.length
-        });
+        if(isPerf) console.error(`${new Date().getTime()};A*;debut;${potion.id};`);
+        const etapeSuivante = aEtoile(monInventaire.inv, potion, sorts, monHeuristique);
+        etapeSuivante.gain = potion.prix;
+        etapeSuivante.rentabilite = etapeSuivante.gain / potion.cout;
+        recettes.push(etapeSuivante);
+        if(isPerf) console.error(`${new Date().getTime()};A*;fin;${potion.id};${etapeSuivante.cout}`);
     }
     const recetteToDo = recettes.reduce((p, c) => !p ? c : (p.rentabilite < c.rentabilite ? c : p));
-
+    if(isPerf) console.error(`${new Date().getTime()};tour;fin;;`);
     // in the first league: BREW <id> | WAIT; later: BREW <id> | CAST <id> [<times>] | LEARN <id> | REST | WAIT
-    console.log(`${recetteToDo.chemin[0].sort.type} ${recetteToDo.chemin[0].sort.id}`);
+    console.log(`${recetteToDo.suite.sort.type} ${recetteToDo.suite.sort.id}`);
 }
 
 
