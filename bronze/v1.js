@@ -212,6 +212,7 @@ while (true) {
 
     tourPrecedent.action = `${recetteToDo.suite.sort.type} ${recetteToDo.suite.sort.id}`;
     tourPrecedent.potionEnObjectif = recetteToDo;
+    tourPrecedent.aEtoile = null;
     console.log(tourPrecedent.action);
 }
 
