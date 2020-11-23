@@ -3,20 +3,29 @@
  * the standard input according to the problem statement.
  **/
 const isDebug = true;
-const isPerf = false;
-if (isPerf) console.error('date;label 1;etat;label 2;label3');
+const recupereInput = false;
 let fichier;
-//fichier = require('fs').readFileSync('resources/bronze--7055824722316787700').toString().split('\n');
+//fichier = require('fs').readFileSync('resources/bronze--2594522886311000100').toString().split('\n');
 const readLine = () => {
     const line = fichier ? fichier.shift() : readline();
-    if (!isDebug) console.error(line);
+    if (!isDebug && recupereInput) console.error(line);
     return line;
 };
 const debug = (message, objet) => {
     if (isDebug) console.error(message, objet);
 };
-const faitQuelqueChose = tourPrecedent => {
-    console.error("Fait qqch !", tourPrecedent);
+const faitQuelqueChose = (monInventaire, sorts) => {
+    const sortToDoArray = sorts.map(s => s.valeurDelta = s.delta.reduce((a, c) => a + c, 0));
+    //Si fonctionComparaison(a, b) est inférieur à 0, on trie a avec un indice inférieur à b
+    sortToDoArray.sort((a, b) => b.valeurDelta - a.valeurDelta);
+    for (let sort in sortToDoArray) {
+        const inventaire = sort.delta ? appliqueSort(monInventaire, sort) : [...monInventaire];
+        if (estRealisable(inventaire)) {
+            debug('sort', sort);
+            return sort;
+        }
+    }
+    return {type: 'REST', invoquable: !sorts.every(c => c.invoquable), id: ''};
 };
 let h = [0.5, 1.5, 2.5, 3.5];
 const calculeVecteurHeuristique = sorts => {
@@ -34,13 +43,8 @@ const calculeVecteurHeuristique = sorts => {
                             return c / valeurInteressante;
                         } else {
                             return Math.max(0, -c / valeurInteressante);
-                            // if (c > 0) {
-                            //     return 0;
-                            // } else {
-                            //     return -c / valeurInteressante;
-                            // }
                         }
-                    }).reduce((c,p) => c+p);
+                    }).reduce((c, p) => c + p);
                 valeurIngredient = valeurIngredient / valeurInteressante;
             }
         }
@@ -60,10 +64,10 @@ const reconstruitChemin = noeud => {
     }
     return courant.suivant;
 };
-const appliqueSort = (noeud, sort) => noeud.inventaire.map((c, i) => c + sort.delta[i]);
+const appliqueSort = (inventaire, sort) => inventaire.map((c, i) => c + sort.delta[i]);
 
 const calculeNoeudVoisin = (noeud, sort) => {
-    const inventaire = sort.delta ? appliqueSort(noeud, sort) : [...noeud.inventaire];
+    const inventaire = sort.delta ? appliqueSort(noeud.inventaire, sort) : [...noeud.inventaire];
     if (!estRealisable(inventaire)) return null;
     const voisin = {};
     voisin.inventaire = inventaire;
@@ -103,19 +107,15 @@ const aEtoile = (inventaireDepart, potion, sorts, heuristique, tourPrecedent, he
     } else {
         listeOuverte = tourPrecedent.aEtoile.listeOuverte;
         listeFermee = tourPrecedent.aEtoile.listeFermee;
+        tourPrecedent.aEtoile = null;
     }
-    debug('a star init : listeOuverte', listeOuverte);
-    debug('a star init : listeFermee', listeFermee);
-    let tour = 1;
     while (listeOuverte.length > 0) {
-        if(new Date().getTime() - heureDepart > 50){
-            debug('a star timeouuuuut tourPrecedent : ', tourPrecedent);
+        if (new Date().getTime() - heureDepart > 40) {
             tourPrecedent.aEtoile = {
                 listeOuverte: listeOuverte,
                 listeFermee: listeFermee,
-                nbTimeout: tourPrecedent && tourPrecedent.aEtoile ? tourPrecedent.aEtoile+1 : 1
+                nbTimeout: tourPrecedent && tourPrecedent.aEtoile ? tourPrecedent.aEtoile.nbTimeout + 1 : 1
             };
-            debug('a star timeouuuuut nouveau  : ', tourPrecedent);
             return null;
         }
 
@@ -156,8 +156,6 @@ const aEtoile = (inventaireDepart, potion, sorts, heuristique, tourPrecedent, he
 
 };
 
-if (isPerf) console.error(`${new Date().getTime()};global;debut;;`);
-// game loop
 let tour = 0;
 let tourPrecedent = {};
 
@@ -172,9 +170,8 @@ const scores = [{
 }];
 
 while (true) {
-    const heureDepart = new Date().getTime();
-    if (isPerf) console.error(`${new Date().getTime()};parsing;debut;;`);
     const actionCount = parseInt(readLine()); // the number of spells and recipes in play
+    let heureDepart = new Date().getTime();
     const actionArray = [];
     for (let i = 0; i < actionCount; i++) {
         const inputs = readLine().split(' ');
@@ -214,11 +211,10 @@ while (true) {
         inventoryArray.push([inv0, inv1, inv2, inv3]);
     }
     const monInventaire = inventoryArray[0];
-    if (isPerf) console.error(`${new Date().getTime()};parsing;fin;;`);
 
     tour++;
     const sorts = actionArray.filter(c => c.type === 'CAST');
-    if(tour < 5) {
+    if (tour < 6) {
         tourPrecedent.action = `LEARN ${actionArray.filter(c => c.type === 'LEARN')[0].id}`;
         h = calculeVecteurHeuristique(sorts);
         console.log(tourPrecedent.action);
@@ -228,52 +224,52 @@ while (true) {
     const potions = actionArray.filter(c => c.type === 'BREW');
     // calculer les heuristiques globales pour toutes les potions et ne faire que la plus rentable
     let potion;
+    let isRush = false;
     if (scores[0].nbPotions > 4 && scores[0].nbPotions > scores[1].nbPotions && scores[0].score < scores[1].score) {
         // quoi, il ne me reste que 2 potions, j'en ai fait plus que mon adversaire et j'ai un score inférieur ? on fait la plus chère !
-        potion = potions.reduce((a, c) => c.prix > a.prix ? c : a, 0);
-        debug('if', 1);
+        debug('cher', scores);
+        potion = potions.reduce((a, c) => !!a && (a.prix + a.taxe) > (c.prix + c.taxe) ? a : c, {});
+        //debug('if', 1);
     } else if (scores[0].nbPotions + 2 <= scores[1].nbPotions) {
-        debug('scores : ', scores);
         // quoi ? l'adversaire a 2 potions d'avances ? faut rusher !
-        potion = potions.reduce((a, c) => c.prix < a.prix ? c : a, Number.POSITIVE_INFINITY);
-        debug('else.if', 2);
+        debug('rush', scores);
+        potion = potions.reduce((a, c) => a && c.prix + c.taxe < a.prix + a.taxe ? c : a, {});
+        debug('rush new potion : ', potion);
+        isRush = true;
     } else {
         potion = potions.reduce((a, c) => {
             c.cout = calculeCout(monInventaire, c);
-            c.rentabilite = c.prix / c.cout;
+            c.rentabilite = (c.prix + c.taxe) / c.cout;
             if (!a) return c;
             return a.rentabilite > c.rentabilite ? a : c;
         }, undefined);
-        debug('else', 3);
     }
 
-    if (isPerf) console.error(`${new Date().getTime()};A*;debut;${potion.id};`);
     // si la potion a déjà été analysée par A* au tour précédent, pas besoin de recommencer
     const etapeSuivante = {};
     if (tourPrecedent && tourPrecedent.recette && tourPrecedent.recette.potionIdObjectif === potion.id) {
-        debug('tourPrecedent.recette', tourPrecedent.recette);
+        debug("quoi faire ? ", 1);
+        debug("tourPrecedent", tourPrecedent);
+        debug("tourPrecedent.recette.suite.suivant", tourPrecedent.recette.suite.suivant);
+        debug("potion", potion);
         etapeSuivante.potionIdObjectif = potion.id;
         etapeSuivante.recette = {suite: tourPrecedent.recette.suite.suivant};
+    } else if (tourPrecedent.aEtoile && tourPrecedent.aEtoile.nbTimeout >= 2) {
+        debug("quoi faire ?", 2);
+        etapeSuivante.recette = {suite: {sort: faitQuelqueChose(monInventaire, sorts)}};
     } else {
-        debug('else tourPrecedent', 1);
-        if(tourPrecedent.aEtoile && tourPrecedent.aEtoile.nbTimeout >= 2){
-            debug('else tourPrecedent', 'faitQuelqueChose');
-            faitQuelqueChose(tourPrecedent);
-        }
-        debug('else tourPrecedent', 'avant aStar');
+        debug("quoi faire ?", 3);
         etapeSuivante.recette = aEtoile(monInventaire, potion, sorts, monHeuristique, tourPrecedent, heureDepart);
-        if(!etapeSuivante.recette) {
+        if (!etapeSuivante.recette) {
             console.log('WAIT');
             continue;
         }
-        debug('else tourPrecedent', 'apres aStar');
     }
-    if(!etapeSuivante.recette.suite) debug("etapeSuivante.recette.suite", etapeSuivante.recette);
-    debug("etapeSuivante.recette ", etapeSuivante.recette);
-    etapeSuivante.action = evalueAction(etapeSuivante.recette.suite.sort)
-    if (isPerf) console.error(`${new Date().getTime()};A*;fin;${potion.id};${etapeSuivante.cout}`);
-    if (isPerf) console.error(`${new Date().getTime()};tour;fin;;`);
-    debug('recetteToDo', etapeSuivante);
+    if (!etapeSuivante.recette.suite) {
+        debug('tourPrecedent', tourPrecedent);
+        debug('etapeSuivante.recette', etapeSuivante.recette);
+    }
+    etapeSuivante.action = evalueAction(etapeSuivante.recette.suite.sort);
 
     console.log(etapeSuivante.action);
     tourPrecedent = etapeSuivante;
